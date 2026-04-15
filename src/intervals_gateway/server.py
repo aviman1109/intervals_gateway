@@ -21,6 +21,8 @@ import httpx
 import uvicorn
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+
+from intervals_gateway.otel import setup_otel
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
@@ -197,6 +199,7 @@ def build_app() -> FastMCP:
 
 
 def main() -> None:
+    setup_otel()
     app = build_app()
     transport = os.getenv("MCP_TRANSPORT", "http").lower()
     host = os.getenv("MCP_HOST", "0.0.0.0")
