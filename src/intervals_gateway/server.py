@@ -39,6 +39,7 @@ Write tools:
 - schedule_event(workout_id, date, name?) — schedule onto calendar
 - create_note_event(date, note, name?) — add NOTE-category annotation to calendar
 - update_event(event_id, note) — add/update note on an existing calendar event
+- delete_event(event_id) — delete a planned WORKOUT/NOTE event (duplicates, cancellations)
 - upload_activity(fit_path, start_time_local?, replace_existing?) — upload FIT,
   optionally replacing a Zwift-uploaded version in the same time window
 - update_wellness(date, ...) — daily wellness: subjective 1-4 scores, sleep,
@@ -223,6 +224,26 @@ def build_app() -> FastMCP:
             f"/athlete/{athlete_id}/events/{event_id}",
             json={"description": note},
         )
+
+    @app.tool()
+    async def delete_event(event_id: int) -> dict:
+        """
+        Delete a planned calendar event (WORKOUT or NOTE) — e.g. a duplicate
+        or cancelled session. Completed activities are separate objects and
+        cannot be touched by this tool.
+
+        Confirm with the athlete which events to delete before calling.
+
+        Args:
+            event_id: intervals.icu event id (from list_events).
+
+        Returns: summary of the deleted event.
+        """
+        ev = await _req("GET", f"/athlete/{athlete_id}/events/{event_id}")
+        if ev.get("category") not in ("WORKOUT", "NOTE"):
+            raise ValueError(f"Refusing to delete event category {ev.get('category')!r}")
+        await _req("DELETE", f"/athlete/{athlete_id}/events/{event_id}")
+        return {k: ev.get(k) for k in ("id", "name", "type", "category", "start_date_local")}
 
     @app.tool()
     async def get_athlete_zones() -> dict:
