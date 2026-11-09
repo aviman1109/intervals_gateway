@@ -297,7 +297,10 @@ def build_app() -> FastMCP:
             start_date: YYYY-MM-DD (inclusive).
             end_date: YYYY-MM-DD (inclusive).
 
-        Returns: {"count": N, "activities": [...]} with id/start_date_local/type/source/name.
+        Returns: {"count": N, "activities": [...]} with id/start_date_local/type/source/name/
+        moving_time plus analysis fields: icu_training_load, average_heartrate,
+        icu_average_watts, decoupling (aerobic drift %, power-based so rides only;
+        large values usually mean an HR strap dropout) and icu_efficiency_factor.
         """
         data = await _req(
             "GET",
@@ -305,10 +308,33 @@ def build_app() -> FastMCP:
             params={"oldest": start_date, "newest": end_date},
         )
         slim = [
-            {k: a.get(k) for k in ("id", "start_date_local", "type", "source", "name", "moving_time") if k in a}
+            {k: a.get(k) for k in ("id", "start_date_local", "type", "source", "name", "moving_time", "icu_training_load", "average_heartrate", "icu_average_watts", "decoupling", "icu_efficiency_factor") if k in a}
             for a in (data if isinstance(data, list) else [])
         ]
         return {"count": len(slim), "activities": slim}
+
+    @app.tool()
+    async def get_power_curve(days: int = 90, sport: str = "Ride") -> dict:
+        """
+        Best power over the trailing N days at key durations, for estimating FTP
+        when no test exists (e.g. best 20 min x 0.95) and spotting fitness trends.
+
+        Args:
+            days: Trailing window in days (default 90).
+            sport: Ride (default) or Run.
+
+        Returns: {"days": N, "best_watts": {"1m": W, "5m": W, "20m": W, "60m": W}}.
+        """
+        data = await _req(
+            "GET",
+            f"/athlete/{athlete_id}/power-curves",
+            params={"type": sport, "curves": f"{days}d"},
+        )
+        curve = (data.get("list") or [{}])[0] if isinstance(data, dict) else {}
+        secs, watts = curve.get("secs") or [], curve.get("values") or []
+        by_secs = dict(zip(secs, watts))
+        best = {label: by_secs.get(s) for label, s in (("1m", 60), ("5m", 300), ("20m", 1200), ("60m", 3600))}
+        return {"days": days, "best_watts": best}
 
     @app.tool()
     async def upload_activity(
