@@ -14,6 +14,13 @@ Gateway Layer MCP for writing workouts / scheduling events / reading fitness on 
 - `list_workouts(limit?)` — list library workouts
 - `get_fitness(days?)` — Fitness / Fatigue / Form curve
 
+## Workout rules (enforced)
+
+`create_workout`, `schedule_event` (name override) and `update_event` on WORKOUT
+events reject writes that break Zwift/Garmin sync — see `src/intervals_gateway/dsl_rules.py`:
+ASCII name and description (Chinese notes go in `create_note_event`), ride power
+in %FTP not watts, HR as `% LTHR` or `bpm` (`% HR` is max HR), no `3x` repeat blocks.
+
 ## Why
 
 intervals.icu auto-syncs to Zwift iPad + Garmin Connect (official partners), so

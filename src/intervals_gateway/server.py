@@ -22,6 +22,7 @@ import uvicorn
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
+from intervals_gateway.dsl_rules import workout_errors
 from intervals_gateway.otel import setup_otel
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
@@ -35,7 +36,10 @@ intervals.icu auto-syncs to Zwift iPad + Garmin Connect, so workouts written
 here appear on both platforms without touching Zwift/Garmin APIs directly.
 
 Write tools:
-- create_workout(name, description, sport?, folder_id?) — intervals DSL description
+- create_workout(name, description, sport?, folder_id?) — intervals DSL description.
+  Rejected unless: name and description are ASCII (Zwift shows no CJK; put
+  Chinese notes in create_note_event), ride power is %FTP not watts, HR uses
+  % LTHR or bpm (not '% HR' = max HR), no '3x' repeat blocks.
 - schedule_event(workout_id, date, name?) — schedule onto calendar
 - create_note_event(date, note, name?) — add NOTE-category annotation to calendar
 - update_event(event_id, note) — add/update note on an existing calendar event
@@ -122,8 +126,13 @@ def build_app() -> FastMCP:
             sport: Ride / Run / Swim / WeightTraining / ... (default Ride).
             folder_id: Library folder id; defaults to first folder (usually "Workouts").
 
+        Rules (enforced, see dsl_rules.py): ASCII name/description, ride power
+        in %FTP, HR as % LTHR or bpm, no '3x' repeat blocks.
+
         Returns: created workout object.
         """
+        if errors := workout_errors(name, description, sport):
+            raise ValueError("Workout rejected: " + "; ".join(errors))
         if folder_id is None:
             folder_id = await _default_folder_id()
         payload: dict[str, Any] = {
@@ -153,6 +162,8 @@ def build_app() -> FastMCP:
 
         Returns: created event object.
         """
+        if name is not None and (errors := workout_errors(name, "", "")):
+            raise ValueError("Event rejected: " + "; ".join(errors))
         wo = await _req("GET", f"/athlete/{athlete_id}/workouts/{workout_id}")
         payload: dict[str, Any] = {
             "start_date_local": f"{date}T00:00:00",
@@ -217,8 +228,16 @@ def build_app() -> FastMCP:
             event_id: intervals.icu event id (from list_events or schedule_event response).
             note: Text to set as the event description (replaces existing).
 
+        A WORKOUT event's description is its DSL, so the create_workout rules
+        apply to it; NOTE events accept any text.
+
         Returns: updated event object.
         """
+        event = await _req("GET", f"/athlete/{athlete_id}/events/{event_id}")
+        if event.get("category") == "WORKOUT" and (
+            errors := workout_errors(None, note, event.get("type") or "")
+        ):
+            raise ValueError("Update rejected: " + "; ".join(errors))
         return await _req(
             "PUT",
             f"/athlete/{athlete_id}/events/{event_id}",
