@@ -184,7 +184,10 @@ def build_app() -> FastMCP:
             start_date: YYYY-MM-DD (inclusive).
             end_date: YYYY-MM-DD (inclusive).
 
-        Returns: {"count": N, "events": [...]} each event has id, name, type, start_date_local, description.
+        Returns: {"count": N, "events": [...]} each event has id, name, type, category,
+        start_date_local, description, target (which target the device gets: AUTO/POWER/HR/PACE),
+        push_errors (failed pushes to Garmin/Zwift — check after scheduling) and
+        training_availability (NORMAL/LIMITED/UNAVAILABLE on availability events).
         """
         data = await _req(
             "GET",
@@ -192,7 +195,7 @@ def build_app() -> FastMCP:
             params={"oldest": start_date, "newest": end_date},
         )
         slim = [
-            {k: e.get(k) for k in ("id", "name", "type", "start_date_local", "description") if k in e}
+            {k: e.get(k) for k in ("id", "name", "type", "category", "start_date_local", "description", "target", "push_errors", "training_availability") if k in e}
             for e in (data if isinstance(data, list) else [])
         ]
         return {"count": len(slim), "events": slim}
